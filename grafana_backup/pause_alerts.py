@@ -5,7 +5,7 @@ from grafana_backup.api_checks import main as api_checks
 from grafana_backup.dashboardApi import search_alerts, pause_alert
 
 
-def main(args, settings):
+async def main(args, settings):
     (status, json_resp, dashboard_uid_support, datasource_uid_support, paging_support) = api_checks(settings)
 
     # Do not continue if API is unavailable or token is not valid
@@ -16,6 +16,7 @@ def main(args, settings):
     settings.update({'DASHBOARD_UID_SUPPORT': dashboard_uid_support})
     settings.update({'DATASOURCE_UID_SUPPORT': datasource_uid_support})
     settings.update({'PAGING_SUPPORT': paging_support})
+    session = settings.get('session')
 
     debug = settings.get('DEBUG')
     timestamp = settings.get('TIMESTAMP')
@@ -30,8 +31,8 @@ def main(args, settings):
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
-    alerts = get_all_alerts(grafana_url, http_get_headers, verify_ssl, client_cert, debug)
-    file_path = save_json("alerts.json", alerts, folder_path, 'alerts', pretty_print)
+    alerts = await get_all_alerts(grafana_url, http_get_headers, verify_ssl, client_cert, debug, session)
+    file_path = await save_json("alerts.json", alerts, folder_path, 'alerts', pretty_print)
     print("alerts have been saved to {0}".format(file_path))
 
     for alert in alerts:
@@ -40,8 +41,8 @@ def main(args, settings):
             print("pausing of alert {0} failed with {1}".format(alert['name'], status))
 
 
-def get_all_alerts(grafana_url, http_get_headers, verify_ssl, client_cert, debug):
-    (status_code, content) = search_alerts(grafana_url, http_get_headers, verify_ssl, client_cert, debug)
+async def get_all_alerts(grafana_url, http_get_headers, verify_ssl, client_cert, debug, session):
+    (status_code, content) = await search_alerts(grafana_url, http_get_headers, verify_ssl, client_cert, debug, session)
     if status_code == 200:
         return content
     else:

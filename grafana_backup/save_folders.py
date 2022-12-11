@@ -1,10 +1,14 @@
+import asyncio
 import os
-import json
+import ujson as json
+
+import aiofiles
+
 from grafana_backup.dashboardApi import search_folders, get_folder, get_folder_permissions
 from grafana_backup.commons import to_python2_and_3_compatible_string, print_horizontal_line, save_json
 
 
-def main(args, settings):
+async def main(args, settings):
     backup_dir = settings.get('BACKUP_DIR')
     timestamp = settings.get('TIMESTAMP')
     grafana_url = settings.get('GRAFANA_URL')
@@ -14,6 +18,7 @@ def main(args, settings):
     debug = settings.get('DEBUG')
     pretty_print = settings.get('PRETTY_PRINT')
     uid_support = settings.get('DASHBOARD_UID_SUPPORT')
+    session = settings.get('session')
 
     folder_path = '{0}/folders/{1}'.format(backup_dir, timestamp)
     log_file = 'folders_{0}.txt'.format(timestamp)
@@ -21,16 +26,15 @@ def main(args, settings):
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
-    folders = get_all_folders_in_grafana(grafana_url, http_get_headers, verify_ssl, client_cert, debug)
+    folders = await get_all_folders_in_grafana(grafana_url, http_get_headers, verify_ssl, client_cert, debug, session)
     print_horizontal_line()
-    get_individual_folder_setting_and_save(folders, folder_path, log_file, grafana_url, http_get_headers, verify_ssl, client_cert, debug, pretty_print, uid_support)
+    await get_individual_folder_setting_and_save(folders, folder_path, log_file, grafana_url, http_get_headers, verify_ssl, client_cert, debug, pretty_print, uid_support, session)
     print_horizontal_line()
 
 
-def get_all_folders_in_grafana(grafana_url, http_get_headers, verify_ssl, client_cert, debug):
-    status_and_content_of_all_folders = search_folders(grafana_url, http_get_headers, verify_ssl, client_cert, debug)
-    status = status_and_content_of_all_folders[0]
-    content = status_and_content_of_all_folders[1]
+async def get_all_folders_in_grafana(grafana_url, http_get_headers, verify_ssl, client_cert, debug, session):
+    status_code, content = await search_folders(grafana_url, http_get_headers, verify_ssl, client_cert, debug, session)
+    status = status_code
     if status == 200:
         folders = content
         print("There are {0} folders:".format(len(content)))
@@ -42,33 +46,44 @@ def get_all_folders_in_grafana(grafana_url, http_get_headers, verify_ssl, client
         return []
 
 
-def save_folder_setting(folder_name, file_name, folder_settings, folder_permissions, folder_path, pretty_print):
-    file_path = save_json(file_name, folder_settings, folder_path, 'folder', pretty_print)
+async def save_folder_setting(folder_name, file_name, folder_settings, folder_permissions, folder_path, pretty_print):
+    file_path = await save_json(file_name, folder_settings, folder_path, 'folder', pretty_print)
     print("folder:{0} are saved to {1}".format(folder_name, file_path))
     # NOTICE: The 'folder_permission' file extension had the 's' removed to work with the magical dict logic in restore.py...
-    file_path = save_json(file_name,  folder_permissions, folder_path, 'folder_permission', pretty_print)
+    file_path = await save_json(file_name,  folder_permissions, folder_path, 'folder_permission', pretty_print)
     print("folder permissions:{0} are saved to {1}".format(folder_name, file_path))
 
 
-def get_individual_folder_setting_and_save(folders, folder_path, log_file, grafana_url, http_get_headers, verify_ssl, client_cert, debug, pretty_print, uid_support):
+async def get_individual_folder_setting_and_save(folders, folder_path, log_file, grafana_url, http_get_headers, verify_ssl, client_cert, debug, pretty_print, uid_support, session):
     file_path = folder_path + '/' + log_file
-    with open(u"{0}".format(file_path), 'w+') as f:
+    async with aiofiles.open(u"{0}".format(file_path), 'w+') as f:
+        tasks_folder_settings = []
+        tasks_folder_permissions = []
         for folder in folders:
-            if uid_support:
-                folder_uri = "uid/{0}".format(folder['uid'])
-            else:
-                folder_uri = folder['uri']
+            tasks_folder_settings.append(get_folder(folder['uid'], grafana_url, http_get_headers, verify_ssl, client_cert, debug, session))
+            tasks_folder_permissions.append(get_folder_permissions(folder['uid'], grafana_url, http_get_headers, verify_ssl, client_cert, debug, session))
 
-            (status_folder_settings, content_folder_settings) = get_folder(folder['uid'], grafana_url, http_get_headers, verify_ssl, client_cert, debug)
-            (status_folder_permissions, content_folder_permissions) = get_folder_permissions(folder['uid'], grafana_url, http_get_headers, verify_ssl, client_cert, debug)
+        responses_folder_settings = await asyncio.gather(*tasks_folder_settings)
+        responses_folder_permissions = await asyncio.gather(*tasks_folder_permissions)
 
-            if status_folder_settings == 200 and status_folder_permissions == 200:
-                save_folder_setting(
-                    to_python2_and_3_compatible_string(folder['title']),
-                    folder_uri,
-                    content_folder_settings,
-                    content_folder_permissions,
-                    folder_path,
-                    pretty_print
-                )
-                f.write('{0}\t{1}\n'.format(folder_uri, to_python2_and_3_compatible_string(folder['title'])))
+        for status_folder_settings, content_folder_settings in responses_folder_settings:
+            for status_folder_permissions, content_folder_permissions in responses_folder_permissions:
+                if isinstance(content_folder_permissions, list):
+                    if content_folder_settings['uid'] != content_folder_permissions[0]['uid']:
+                        continue
+                elif content_folder_settings['uid'] != content_folder_permissions['uid']:
+                    continue
+                if uid_support:
+                    folder_uri = "uid/{0}".format(content_folder_settings['uid'])
+                else:
+                    folder_uri = content_folder_settings['uri']
+                if status_folder_settings == 200 and status_folder_permissions == 200:
+                    await save_folder_setting(
+                        to_python2_and_3_compatible_string(folder['title']),
+                        folder_uri,
+                        content_folder_settings,
+                        content_folder_permissions,
+                        folder_path,
+                        pretty_print
+                    )
+                    await f.write('{0}\t{1}\n'.format(folder_uri, to_python2_and_3_compatible_string(folder['title'])))

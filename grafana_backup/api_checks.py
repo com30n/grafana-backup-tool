@@ -2,30 +2,31 @@ from grafana_backup.commons import print_horizontal_line
 from grafana_backup.dashboardApi import health_check, auth_check, uid_feature_check, paging_feature_check
 
 
-def main(settings):
+async def main(settings):
     grafana_url = settings.get('GRAFANA_URL')
     http_get_headers = settings.get('HTTP_GET_HEADERS')
     verify_ssl = settings.get('VERIFY_SSL')
     client_cert = settings.get('CLIENT_CERT')
     debug = settings.get('DEBUG')
     api_health_check = settings.get('API_HEALTH_CHECK')
+    session = settings.get('session')
 
     if api_health_check:
-        (status, json_resp) = health_check(grafana_url, http_get_headers, verify_ssl, client_cert, debug)
+        (status, json_resp) = await health_check(grafana_url, http_get_headers, verify_ssl, client_cert, debug, session)
         if not status == 200:
             return (status, json_resp, None, None, None)
 
-    (status, json_resp) = auth_check(grafana_url, http_get_headers, verify_ssl, client_cert, debug)
+    (status, json_resp) = await auth_check(grafana_url, http_get_headers, verify_ssl, client_cert, debug, session)
     if not status == 200:
         return (status, json_resp, None, None, None)
 
-    dashboard_uid_support, datasource_uid_support = uid_feature_check(grafana_url, http_get_headers, verify_ssl, client_cert, debug)
+    dashboard_uid_support, datasource_uid_support = await uid_feature_check(grafana_url, http_get_headers, verify_ssl, client_cert, debug, session)
     if isinstance(dashboard_uid_support, str):
         raise Exception(dashboard_uid_support)
     if isinstance(datasource_uid_support, str):
         raise Exception(datasource_uid_support)
 
-    paging_support = paging_feature_check(grafana_url, http_get_headers, verify_ssl, client_cert, debug)
+    paging_support = await paging_feature_check(grafana_url, http_get_headers, verify_ssl, client_cert, debug, session)
     if isinstance(paging_support, str):
         raise Exception(paging_support)
 

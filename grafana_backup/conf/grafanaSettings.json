@@ -1,6 +1,6 @@
 {
   "general": {
-    "debug": true,
+    "debug": false,
     "verify_ssl": true,
     "api_health_check": true,
     "backup_dir": "_OUTPUT_",

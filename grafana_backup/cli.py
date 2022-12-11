@@ -1,3 +1,5 @@
+import asyncio
+
 from grafana_backup.constants import (PKG_NAME, PKG_VERSION, JSON_CONFIG_PATH)
 from grafana_backup.save import main as save
 from grafana_backup.restore import main as restore
@@ -36,7 +38,7 @@ args = docopt(docstring, help=False,
               version='{0} {1}'.format(PKG_NAME, PKG_VERSION))
 
 
-def main():
+async def main():
     arg_config = args.get('--config', False)
     default_config = '{0}/conf/grafanaSettings.json'.format(
         os.path.dirname(__file__))
@@ -49,7 +51,7 @@ def main():
         settings = conf(default_config)
 
     if args.get('save', None):
-        save(args, settings)
+        await save(args, settings)
         sys.exit()
     elif args.get('restore', None):
         restore(args, settings)
@@ -69,4 +71,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
+

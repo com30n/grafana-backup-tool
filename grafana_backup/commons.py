@@ -1,4 +1,7 @@
-import re, sys, json
+import re, sys
+import ujson as json
+
+import aiofiles
 
 
 def print_horizontal_line():
@@ -38,16 +41,16 @@ def load_config(path=None):
     return config
 
 
-def save_json(file_name, data, folder_path, extension, pretty_print):
+async def save_json(file_name, data, folder_path, extension, pretty_print):
     pattern = "^db/|^uid/"
     if re.match(pattern, file_name):
         file_name = re.sub(pattern, '', file_name)
 
     file_path = folder_path + '/' + file_name + '.' + extension
-    with open(u"{0}".format(file_path), 'w') as f:
+    async with aiofiles.open(u"{0}".format(file_path), 'w') as f:
         if pretty_print:
-            f.write(json.dumps(data, sort_keys=True, indent=4, separators=(',', ': ')))
+            await f.write(json.dumps(data, sort_keys=True, indent=4, separators=(',', ': ')))
         else:
-            f.write(json.dumps(data))
+            await f.write(data)
     # Return file_path for showing in the console message
     return file_path

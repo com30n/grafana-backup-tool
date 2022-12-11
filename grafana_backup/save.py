@@ -1,3 +1,8 @@
+import inspect
+import ssl
+
+import aiohttp
+
 from grafana_backup.api_checks import main as api_checks
 from grafana_backup.save_dashboards import main as save_dashboards
 from grafana_backup.save_datasources import main as save_datasources
@@ -16,7 +21,7 @@ from grafana_backup.gcs_upload import main as gcs_upload
 import sys
 
 
-def main(args, settings):
+async def main(args, settings):
     arg_components = args.get('--components', False)
     arg_no_archive = args.get('--no-archive', False)
 
@@ -29,8 +34,15 @@ def main(args, settings):
                         'snapshots': save_snapshots,
                         'versions': save_versions,
                         'annotations': save_annotations}
+    conn = None
+    if settings.get('CLIENT_CERT'):
+        sslcontext = ssl.create_default_context(cafile=settings.client_cert)
+        conn = aiohttp.TCPConnector(ssl_context=sslcontext)
+    session = aiohttp.ClientSession(connector=conn)
+    session.verify = settings.get('VERIFY_SSL')
+    settings.update({'session': session})
 
-    (status, json_resp, dashboard_uid_support, datasource_uid_support, paging_support) = api_checks(settings)
+    (status, json_resp, dashboard_uid_support, datasource_uid_support, paging_support) = await api_checks(settings)
 
     # Do not continue if API is unavailable or token is not valid
     if not status == 200:
@@ -46,11 +58,11 @@ def main(args, settings):
 
         # Backup only the components that provided via an argument
         for backup_function in arg_components_list:
-            backup_functions[backup_function](args, settings)
+            await backup_functions[backup_function](args, settings)
     else:
         # Backup every component
         for backup_function in backup_functions.keys():
-            backup_functions[backup_function](args, settings)
+            await backup_functions[backup_function](args, settings)
 
     aws_s3_bucket_name = settings.get('AWS_S3_BUCKET_NAME')
     azure_storage_container_name = settings.get('AZURE_STORAGE_CONTAINER_NAME')
@@ -74,3 +86,5 @@ def main(args, settings):
 
     if influxdb_host:
         influx(args, settings)
+
+    await session.close()

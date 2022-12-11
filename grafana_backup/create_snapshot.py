@@ -12,7 +12,7 @@ def main(args, settings, file_path):
     with open(file_path, 'r') as f:
         data = f.read()
 
-    snapshot = json.loads(data)
+    snapshot = data
     try:
         snapshot['name'] = snapshot['dashboard']['title']
     except KeyError:

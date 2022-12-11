@@ -1,4 +1,52 @@
-# Grafana Backup Tool
+# Async Grafana Backup Tool
+
+## A couple of words from me:
+#### This is a fork of the repo: https://github.com/ysde/grafana-backup-tool  
+#### The main difference here is the speedup of backups with loss of backward compatibility with python 2.*
+
+## WIP: backup of everything to local disk was updated, but restore and other functions weren't
+
+The fork uses `aiohttp` with tasks gathering approach to speedup requests to grafana, `aiofiles` to speedup parallel disk operations, and `ujson` to speedup work with json.
+
+## Comparison of my version and the original version:
+the initial version:
+```
+time python -m grafana_backup.cli save --component versions
+...
+########################################
+
+[Pre-Check] Server status is 'OK' !!
+
+########################################
+
+search dashboard in grafana: https://localhost:3000/api/search/?type=dash-db&limit=5000&page=1
+There are 181 dashboards:
+...
+created archive at: _OUTPUT_/202212112223.tar.gz
+
+33.20s user 4.10s system 2% cpu 22:23.58 total
+```  
+
+my version:
+```
+time python -m grafana_backup.cli save --component versions
+...
+########################################
+
+[Pre-Check] Server status is 'OK' !!
+
+########################################
+
+search dashboard in grafana: https://localhost:3000/api/search/?type=dash-db&limit=5000&page=1
+There are 181 dashboards:
+...
+created archive at: _OUTPUT_/202212112246.tar.gz
+3.69s user 1.04s system 17% cpu 26.326 total
+```
+
+So, the difference is **22 minutes 23 seconds** vs **26 seconds** on the dataset which contains 181 dashboard with a more than 1500 versions.
+
+## The original readme file content:
 
 A Python-based application to backup Grafana settings using the [Grafana API](https://grafana.com/docs/grafana/latest/http_api/).
 
